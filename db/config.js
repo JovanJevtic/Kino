@@ -1,10 +1,12 @@
 const mysql = require('mysql2/promise');
+const asyncHandler = require('express-async-handler');
 
 const dbConfig = {
   host: 'kino.c2pgawguqiep.us-east-1.rds.amazonaws.com',
   user: 'admin',
   password: 'cveceisplin',
   database: 'kino',
+  // connectTimeout: 60000
 };
 
 async function connectToDatabase() {

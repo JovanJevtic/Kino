@@ -1,25 +1,32 @@
 const express = require("express");
 require('dotenv').config();
+const helmet = require('helmet');
+const cors = require('cors')
 
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+app.use(helmet());
+
+app.use(cors({
+    // origin: ['http://localhost:8100', 'https://eventotest-b521f.web.app', 'http://localhost'],
+    origin: true,
+    credentials: true
+}))
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }))
 
-const programmingLanguagesRouter = require("./routes/filmovi");
-app.use((err, req, res, next) => {
-    const statusCode = err.statusCode || 500;
-    console.error(err.message, err.stack);
-    res.status(statusCode).json({ message: err.message });
-    return;
-});
+app.use('/api/auth', require('./routes/auth'))
+app.use("/api/filmovi", require("./routes/filmovi"));
+app.use('/api/projekcije', require('./routes/projekcije'))
+app.use('/api/sjedista', require('./routes/sjedista'))
+app.use('/api/sale', require('./routes/sale'))
+app.use('/api/rezervacije', require('./routes/rezervacije'))
 
-app.get("/", (req, res) => {
-  res.json({ message: "ok" });
-});
-
-app.use("/korisnik", programmingLanguagesRouter);
+app.use(require('./middlewares/errorHandler'));
 
 app.listen(PORT, () => {
-  console.log(`Example app listening at http://localhost:${PORT}`);
+  console.log(`app listening at http://localhost:${PORT}`);
 });

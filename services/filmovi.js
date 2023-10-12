@@ -1,20 +1,15 @@
 const { connectToDatabase } = require('../db/config');
+const asyncHandler = require('express-async-handler')
 
-async function getMultiple(){
-  const connection = await connectToDatabase();
-
-  try {
+const getMultiple = asyncHandler(async (req, res) => {
+    const connection = await connectToDatabase();
     const [rows] = await connection.query(
         `SELECT KorisnikID, Ime, Prezime, Email
         FROM Korisnik`
     );
-    connection.close();
-    return rows;
-  } catch (error) {
-    console.error('Error querying the database:', error);
-    connection.close();
-  }
-}
+    await connection.end();
+    res.json(rows);
+});
 
 module.exports = {
   getMultiple
