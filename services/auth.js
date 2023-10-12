@@ -1,5 +1,7 @@
 const { connectToDatabase } = require('../db/config');
 const asyncHandler = require('express-async-handler')
+const bcrypt = require('bcryptjs')
+const nodemailer = require('nodemailer');
 
 // const connection = await connectToDatabase();
 //     const [rows] = await connection.query(
@@ -23,29 +25,151 @@ const register = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error('Sva polja su neophodna!');
     }
-    console.log('email', email);
-
     const connection = await connectToDatabase();
     const [emailEquieped] = await connection.query(
         `SELECT KorisnikID, Ime, Prezime, Email
         FROM Korisnik WHERE Email = '${email}'`
     );
-    connection.end()
 
     if (emailEquieped.length > 0) {
+        connection.end();
         res.status(400);
         throw new Error('Email zauzet!')
     }
-    res.json('Email nije zauzet!');
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPwd = await bcrypt.hash(lozinka, salt);
+    const token = (Math.floor(10000 + Math.random() * 90000)).toString();
+
+    const [verifToken] = await connection.query(
+        `INSERT INTO EmailVerificationToken (Ime, Prezime, Email, Lozinka, Token, Istice) VALUES (
+            '${ime}', '${prezime}', '${email}', '${hashedPwd}', '${token}', DATE_ADD(NOW(), INTERVAL 24 HOUR)
+        )`
+    )
+
+    if (!verifToken) {
+        res.status(400);
+        throw new Error('Los zahtjev, c cc c!')
+    }
+    
+    try {
+        const transporter = nodemailer.createTransport({ 
+            service: 'gmail',
+            auth: { 
+                user: process.env.NODEMAILER_AUTH_EMAIL, 
+                pass: process.env.NODEMAILER_AUTH_PWD
+            } 
+        });
+
+        const mailOptions = { 
+            from: process.env.NODEMAILER_AUTH_EMAIL, 
+            to: email,     
+            subject: 'Account Verification Code', 
+            html: 'Cao,  '+ ime +',\n\n' + 'Tvoj verifikacijski kod je: ' + token  + '\n\n, Pusa!\n' 
+        };
+
+        const sendResult = await transporter.sendMail(mailOptions);
+        await connection.end();
+        res.status(200).json({ verifTokenId: verifToken.insertId });
+    } catch (error) {
+        await connection.end();
+        res.status(400);
+        throw new Error(error);        
+    }
+});
+
+const confirmEmail = asyncHandler(async (req, res) => {
+    const { verifTokenId, confirmToken } = req.body;
+
+    if (!verifTokenId || !confirmToken) {
+        res.status(400);
+        throw new Error("Los zahtjev, c cc c!")
+    }
+
+    const connection = await connectToDatabase();
+
+    try {
+        connection.query(
+            `DELETE FROM EmailVerificationToken WHERE Istice < Now();`
+        );
+        const [verifToken] = await connection.query(
+            `SELECT * FROM EmailVerificationToken WHERE EmailVerificationTokenID = ${verifTokenId}`
+        );
+
+        if (verifToken.length < 1) {
+            res.status(400);
+            connection.end();
+            throw new Error('Nesto je poslo po zlu, isprike..!')
+        };
+        
+        if (verifToken[0].Token == confirmToken) {
+            const data = {
+                ime: verifToken[0].Ime,
+                prezime: verifToken[0].Prezime,
+                email: verifToken[0].Email,
+                lozinka: verifToken[0].Lozinka
+            }
+
+            const [emailEquiped] = await connection.query(`
+                SELECT KorisnikID, Ime, Prezime, Email
+                FROM Korisnik WHERE Email = '${data.email}'
+            `)
+
+            if (emailEquiped.length > 0) {
+                const [updated] = await connection.query(`
+                    UPDATE EmailVerificationToken
+                    SET ime = '${data.ime}', prezime = '${data.prezime}', email = '${data.email}', lozinka = '${data.lozinka}'
+                    WHERE Email = '${emailEquiped[0].email}';
+                `)
+
+                await connection.query(`
+                    DELETE FROM EmailVerificationToken WHERE Email = '${emailEquiped[0].email}'
+                `)
+                connection.end();
+
+                res.status(200).json({ 
+                    ime: updated[0].ime,
+                    prezime: updated[0].prezime,
+                    email: updated[0].email
+                })
+            }
+
+           const [userInfo] = await connection.query(`
+                INSERT INTO Korisnik (Ime, Prezime, Email, Lozinka) VALUES (
+                    '${data.ime}', '${data.prezime}', '${data.email}', '${data.lozinka}'
+                )
+            `)
+
+            const [user] = await connection.query(`
+                SELECT * FROM Korisnik WHERE KorisnikID = '${userInfo.insertId}'
+            `)
+                    
+            await connection.query(`
+                DELETE FROM EmailVerificationToken WHERE EmailVerificationTokenID = '${verifTokenId}'
+            `)
+            connection.end();        
+
+            
+            
+            res.status(201).json({ 
+                ime: user[0].Ime,
+                prezime: user[0].Prezime,
+                email: user[0].Email
+            });
+        } else {
+            await connection.end();
+            res.status(400);
+            throw new Error(`Netačan kod`);
+        }
+    } catch (error) {
+        await connection.end();
+        res.status(400)
+        throw new Error(error);
+   }
 });
 
 const login = asyncHandler(async (req, res) => {
     res.json({ msg: 'Login' })
-});
-
-const confirmEmail = asyncHandler(async (req, res) => {
-    res.json({ msg: 'conf' })
-
 });
 
 const resendConfirmEmail = asyncHandler(async (req, res) => {
