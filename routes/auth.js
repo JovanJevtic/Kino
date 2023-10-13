@@ -16,7 +16,7 @@ router.post('/', register);
 router.post('/confirmEmail', confirmEmail)
 router.post('/resendConfirmEmail', resendConfirmEmail)        
 router.post('/login', login);
-router.get('/me', me);
+router.get('/me', protect, me);
 
 
 module.exports = router;

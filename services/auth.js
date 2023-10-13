@@ -2,6 +2,7 @@ const { connectToDatabase } = require('../db/config');
 const asyncHandler = require('express-async-handler')
 const bcrypt = require('bcryptjs')
 const nodemailer = require('nodemailer');
+const jwt = require('jsonwebtoken')
 
 // const connection = await connectToDatabase();
 //     const [rows] = await connection.query(
@@ -154,7 +155,8 @@ const confirmEmail = asyncHandler(async (req, res) => {
             res.status(201).json({ 
                 ime: user[0].Ime,
                 prezime: user[0].Prezime,
-                email: user[0].Email
+                email: user[0].Email,
+                token: generateToken(userInfo.insertId)
             });
         } else {
             await connection.end();
@@ -169,7 +171,40 @@ const confirmEmail = asyncHandler(async (req, res) => {
 });
 
 const login = asyncHandler(async (req, res) => {
-    res.json({ msg: 'Login' })
+    const { email, lozinka } = req.body;
+
+    if (!email || !lozinka) {
+        res.status(400);
+        throw new Error("Los zahtjev!");
+    }
+
+    const connection = await connectToDatabase();
+    const emailExists = await connection.query(`
+        SELECT * FROM Korisnik WHERE Email = '${email}'
+    `)
+    const user = emailExists[0][0]
+
+    console.log(user);
+
+    if (!user) {
+        res.status(400);
+        throw new Error("Pogresan unos!");
+    }
+
+    if (user && user.Lozinka && (await bcrypt.compare(lozinka, user.Lozinka))) {
+        res.status(200).json({ 
+            ime: user.Ime,
+            prezime: user.Prezime,
+            email: user.Email,
+            id: user.KorisnikID,
+            token: generateToken(user.KorisnikID)
+        })
+    } else {
+        connection.end();
+        res.status(400);
+        throw new Error('Pogresan unos!');
+    }
+
 });
 
 const resendConfirmEmail = asyncHandler(async (req, res) => {
@@ -178,7 +213,19 @@ const resendConfirmEmail = asyncHandler(async (req, res) => {
 });
 
 const me = asyncHandler(async (req, res) => {
-    res.json({ msg: 'blubp' })
+    if (!req.user) {
+        res.status(404).json({message: 'Nisi prijavljen, covece!'});
+    } 
+    const user = req.user[0];
+    console.log(user);
+
+    res.status(200).json({ 
+        ime: user.Ime,
+        prezime: user.Prezime,
+        email: user.Email,
+        id: user.KorisnikID,
+        token: generateToken(user.KorisnikID)
+    });
 
 });
 
